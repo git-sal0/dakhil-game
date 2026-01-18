@@ -1,6 +1,6 @@
 {
   "name": "dakhil",
-  "main": "expo-router/entry",
+  "main": "index.js",
   "version": "1.0.0",
   "scripts": {
     "start": "expo start",

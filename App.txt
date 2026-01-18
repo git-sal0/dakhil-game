@@ -1,0 +1,879 @@
+import React, { useState } from "react";
+import {
+  Animated,
+  Button,
+  FlatList,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
+} from "react-native";
+
+export default function App() {
+  const [screen, setScreen] = useState("home");
+  const fadeAnim = useState(new Animated.Value(1))[0];
+  const [currentImposterGuessIndex, setCurrentImposterGuessIndex] = useState(0);
+  const [imposterWon, setImposterWon] = useState(false);
+
+
+  const [players, setPlayers] = useState([]);
+  const [playerName, setPlayerName] = useState("");
+
+  const [categories, setCategories] = useState({
+    food: ["pizza", "burger", "apple", "rice"],
+    animals: ["cat", "dog", "lion", "cow"],
+    clothes: ["shirt", "pants", "skirt", "jacket"]
+  });
+
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [secretWord, setSecretWord] = useState(null);
+
+  const [customCategoryName, setCustomCategoryName] = useState("");
+  const [customWordsText, setCustomWordsText] = useState("");
+  
+  const [impostersCount, setImpostersCount] = useState(1);
+  const [imposterIds, setImposterIds] = useState([]);
+
+  const [currentRevealIndex, setCurrentRevealIndex] = useState(0);
+  const [cardFlipped, setCardFlipped] = useState(false);
+
+  const [currentVoterIndex, setCurrentVoterIndex] = useState(0);
+  const [votes, setVotes] = useState({});
+  const [selectedVotes, setSelectedVotes] = useState([]);
+
+  function toggleVote(playerId) {
+    setSelectedVotes(prev => {
+      if (prev.includes(playerId)) {
+        return prev.filter(id => id !== playerId);
+      }
+  
+      if (prev.length >= impostersCount) {
+        return prev;
+      }
+  
+      return [...prev, playerId];
+    });
+  }
+
+  function confirmVote() {
+    const newVotes = { ...votes };
+  
+    selectedVotes.forEach(id => {
+      newVotes[id] = (newVotes[id] || 0) + 1;
+    });
+  
+    setVotes(newVotes);
+    setSelectedVotes([]);
+  
+    if (currentVoterIndex + 1 < players.length) {
+      setCurrentVoterIndex(i => i + 1);
+    } else {
+      setScreen("voteResults");
+    }
+  }
+  
+
+  function isImposter(playerId) {
+    return imposterIds.includes(playerId);
+  }
+
+  function getTopVoted() {
+    const sorted = Object.entries(votes)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3);
+  
+    return sorted.map(([id, count]) => ({
+      player: players.find(p => p.id === Number(id)),
+      count
+    }));
+  }
+  
+  function selectImposters() {
+    const shuffled = [...players].sort(() => Math.random() - 0.5);
+    setCurrentRevealIndex(0);
+    setCardFlipped(false);
+    
+    const selected = shuffled
+      .slice(0, impostersCount)
+      .map(p => p.id);
+  
+    setImposterIds(selected);
+    setScreen("reveal");
+  }
+  
+
+  function addPlayer() {
+    if (!playerName.trim()) return;
+
+    setPlayers(p => [
+      ...p,
+      { id: Date.now(), name: playerName.trim(), score: 0 }
+    ]);
+    setPlayerName("");
+  }
+
+  function removePlayer(id) {
+    setPlayers(p => p.filter(x => x.id !== id));
+  }
+
+  function chooseCategory(name, words) {
+    const randomWord =
+      words[Math.floor(Math.random() * words.length)];
+
+    setSelectedCategory(name);
+    setSecretWord(randomWord);
+    setScreen("imposterConfig");
+  }
+
+  function addCustomCategory() {
+    const words = customWordsText
+      .split(",")
+      .map(w => w.trim())
+      .filter(Boolean);
+
+    if (!customCategoryName || words.length < 3) return;
+
+    setCategories(prev => ({
+      ...prev,
+      [customCategoryName]: words
+    }));
+
+    chooseCategory(customCategoryName, words);
+
+    setCustomCategoryName("");
+    setCustomWordsText("");
+  }
+
+  return (
+    
+    <View style={styles.container}>
+{screen === "home" && (
+  <View style={{ flex: 1, justifyContent: "center" }}>
+    <Text style={styles.title}>DAKHIL</Text>
+
+    <Text style={styles.homeTagline}>
+      One word. One liar.
+    </Text>
+
+    <View style={{ marginTop: 40 }}>
+      <TouchableOpacity
+        style={styles.buttonPrimary}
+        onPress={() => setScreen("setup")}
+      >
+        <Text style={styles.buttonPrimaryText}>
+          START GAME
+        </Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+)}
+
+
+{screen === "imposterGuess" && (
+  <>
+    <Text style={styles.title}>
+      Imposter Guess
+    </Text>
+
+    <Text style={styles.info}>
+      Pass phone to {
+        players.find(p => p.id === imposterIds[currentImposterGuessIndex])?.name
+      }
+    </Text>
+
+    <Text style={styles.subtitle}>
+      Choose the secret word
+    </Text>
+
+    <ScrollView>
+      {categories[selectedCategory].map(word => (
+        <TouchableOpacity
+          key={word}
+          style={styles.voteOption}
+          onPress={() => {
+            if (word === secretWord) {
+              setImposterWon(true);
+            }
+
+            if (currentImposterGuessIndex + 1 < imposterIds.length) {
+              setCurrentImposterGuessIndex(i => i + 1);
+            } else {
+              setScreen("finalResult");
+            }
+          }}
+        >
+          <Text style={styles.voteText}>{word}</Text>
+        </TouchableOpacity>
+      ))}
+    </ScrollView>
+  </>
+)}
+
+{screen === "finalResult" && (
+  <>
+    <Text style={styles.title}>Game Result</Text>
+
+    <Text style={styles.resultText}>
+      {imposterWon ? "Imposters WIN 🎭" : "Players WIN 🎉"}
+    </Text>
+
+    <Text style={styles.subtitle}>
+      Secret word was: {secretWord}
+    </Text>
+
+    <Text style={{ marginTop: 20, fontWeight: "bold",color:"#FFF"}}>
+      Imposters:
+    </Text>
+
+    {imposterIds.map(id => {
+      const p = players.find(x => x.id === id);
+      return (
+        <Text key={id} style={{ fontSize: 20 ,color:"#FFF"}}>
+          {p?.name}
+        </Text>
+      );
+    })}
+
+    {/* PLAY AGAIN – SAME PLAYERS */}
+    <View style={{ marginTop: 30 }}>
+    <Button
+  title="Play Again (Same Players)"
+  onPress={() => {
+    // round reset ONLY
+    setVotes({});
+    setSelectedVotes([]);
+    setCurrentVoterIndex(0);
+    setImposterIds([]);
+    setCurrentRevealIndex(0);
+    setCardFlipped(false);
+    setCurrentImposterGuessIndex(0);
+    setImposterWon(false);
+
+    setScreen("category"); // ✅ SAME PLAYERS
+  }}
+/>
+<Button
+  title="New Game (Change Players)"
+  onPress={() => {
+    setPlayers([]);
+    setVotes({});
+    setSelectedVotes([]);
+    setCurrentVoterIndex(0);
+    setImposterIds([]);
+    setSecretWord(null);
+    setSelectedCategory(null);
+    setCurrentRevealIndex(0);
+    setCardFlipped(false);
+    setCurrentImposterGuessIndex(0);
+    setImposterWon(false);
+
+    setScreen("home");
+  }}
+/>
+
+
+    </View>
+
+    {/* FULL RESET */}
+    <View style={{ marginTop: 10 }}>
+
+    </View>
+  </>
+)}
+
+
+
+{screen === "imposterConfig" && (
+  <>
+    <Text style={styles.title}>Imposters</Text>
+
+    <Text style={{color:"#FFF"}}>
+      Players: {players.length}
+    </Text>
+
+    {players.length >= 6 && (
+      <>
+        <Button
+          title="1 Imposter"
+          onPress={() => setImpostersCount(1)}
+        />
+        <Button
+          title="2 Imposters"
+          onPress={() => setImpostersCount(2)}
+        />
+      </>
+    )}
+
+    {players.length < 6 && (
+      <Text style={{color:"#FFF"}}>Only 1 imposter allowed</Text>
+    )}
+
+    <Button
+      title="Confirm & Start"
+      onPress={selectImposters}
+    />
+
+    <Button
+      title="Back"
+      onPress={() => setScreen("category")}
+    />
+  </>
+)}
+
+
+{screen === "voteResults" && (
+  <>
+    <Text style={styles.title}>Voting Results</Text>
+
+    {getTopVoted().map((v, i) => (
+      <Text key={i} style={styles.resultText}>
+        {v.player.name}: {v.count} votes
+      </Text>
+    ))}
+
+    <Button
+      title="Reveal Imposters"
+      onPress={() => setScreen("revealImposters")}
+    />
+  </>
+)}
+{screen === "revealImposters" && (
+  <>
+    <Text style={styles.title}>Imposters</Text>
+
+    {imposterIds.map(id => {
+      const p = players.find(x => x.id === id);
+      return <Text style={{color:"#FFF"}} key={id}>{p.name} </Text>;
+    })}
+
+    <Button
+      style={styles.buttonPrimary}
+      title="Continue"
+      onPress={() => setScreen("imposterGuess")}
+    />
+  </>
+)}
+
+
+{screen === "setup" && (
+  <View style={{ flex: 1 }}>
+    <Text style={styles.title}>Add Players</Text>
+
+    <View style={styles.addPlayerCard}>
+      <TextInput
+        style={styles.input}
+        placeholder="Player name"
+        placeholderTextColor={COLORS.muted}
+        value={playerName}
+        onChangeText={setPlayerName}
+        underlineColorAndroid="transparent"   // ✅ REQUIRED
+        cursorColor="#FFFFFF"
+        selectionColor="#FFFFFF"
+        // optional but recommended
+        autoCorrect={false}
+        autoCapitalize="words"
+      />
+
+      <View style={{ marginTop: 10 }}>
+        <Button title="Add Player" onPress={addPlayer} />
+      </View>
+    </View>
+
+    <FlatList
+      data={players}
+      keyExtractor={i => i.id.toString()}
+      contentContainerStyle={{ marginTop: 20 }}
+      renderItem={({ item }) => (
+        <View style={styles.playerRow}>
+          <Text style={styles.baseText}>{item.name}</Text>
+          <TouchableOpacity onPress={() => removePlayer(item.id)}>
+            <Text style={styles.remove}>✕</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    />
+
+    <View style={{ marginTop: 20 }}>
+    <Button 
+    style={styles.buttonPrimary}
+  title="Continue"
+  disabled={players.length < 3}
+  onPress={() => setScreen("category")}
+/>
+
+
+
+    </View>
+
+    {/* RETURN BUTTON */}
+    <View style={styles.bottomActions}>
+  <Button
+    title="Back to Home"
+    onPress={() => setScreen("home")}
+  />
+</View>
+
+  </View>
+)}
+
+
+      {screen === "category" && (
+        <ScrollView>
+          <Text style={styles.title}>Choose Category</Text>
+
+          {Object.entries(categories).map(([name, words]) => (
+            <Button
+              key={name}
+              title={name.toUpperCase()}
+              onPress={() => chooseCategory(name, words)}
+            />
+          ))}
+
+          <Text style={styles.subtitle}>Custom Category</Text>
+
+          <TextInput 
+            placeholderTextColor={COLORS.muted}
+            cursorColor="#FFFFFF"
+            selectionColor="#FFFFFF"
+            // optional but recommended
+            autoCorrect={false}
+            autoCapitalize="words"
+            style={styles.input}
+            placeholder="Category name"
+            value={customCategoryName}
+            onChangeText={setCustomCategoryName}
+            underlineColorAndroid="transparent"   // ✅ REQUIRED
+
+          />
+
+          <TextInput
+            placeholderTextColor={COLORS.muted}
+            cursorColor="#FFFFFF"
+            selectionColor="#FFFFFF"
+            // optional but recommended
+            autoCorrect={false}
+            autoCapitalize="words"
+            style={styles.input}
+            placeholder="Words (comma separated)"
+            value={customWordsText}
+            onChangeText={setCustomWordsText}
+            underlineColorAndroid="transparent"   // ✅ REQUIRED
+          />
+
+          <Button title="Create & Start" onPress={addCustomCategory} />
+
+          <Button title="Back" onPress={() => setScreen("setup")} />
+        </ScrollView>
+      )}
+
+{screen === "voting" && (
+  <View style={{ flex: 1, justifyContent: "center" }}>
+    <Text style={styles.title}>
+      Pass phone to {players[currentVoterIndex].name}
+    </Text>
+
+    <Text style={{ textAlign: "center", marginBottom: 20,color:"#FFF"}}>
+      Select {impostersCount} suspect{impostersCount > 1 ? "s" : ""}
+    </Text>
+
+    {players.map(p => {
+      const isSelf = p.id === players[currentVoterIndex].id;
+      const selected = selectedVotes.includes(p.id);
+
+      return (
+        <TouchableOpacity
+          key={p.id}
+          disabled={isSelf}
+          onPress={() => toggleVote(p.id)}
+          style={[
+            styles.voteOption,
+            selected && styles.voteSelected,
+            isSelf && styles.voteDisabled
+          ]}
+        >
+          <Text
+            style={[
+              styles.voteText,
+              isSelf && styles.voteDisabledText
+            ]}
+          >
+            {p.name}
+          </Text>
+        </TouchableOpacity>
+      );
+    })}
+
+    <Button
+      title="Confirm Vote"
+      disabled={selectedVotes.length !== impostersCount}
+      onPress={confirmVote}
+    />
+  </View>
+)}
+
+
+
+{screen === "discussion" && (
+  <>
+    <Text style={styles.title}>Discussion</Text>
+
+    <Text style={styles.info}>
+      Discuss who the imposters are.
+    </Text>
+
+    <Button
+      title="Start Voting"
+      onPress={() => {
+        // RESET VOTING STATE HERE
+        setVotes({});
+        setCurrentVoterIndex(0);
+        setSelectedVotes([]);
+
+        setScreen("voting");
+      }}
+    />
+  </>
+)}
+{screen === "reveal" && (
+  <>
+    {currentRevealIndex < players.length ? (
+      <>
+        <Text style={styles.playerReveal}>
+          Pass phone to {players[currentRevealIndex].name}
+        </Text>
+
+        {!cardFlipped && (
+          <TouchableOpacity
+            style={styles.card}
+            onPress={() => setCardFlipped(true)}
+          >
+            <Text style={styles.cardText}>TAP TO FLIP</Text>
+          </TouchableOpacity>
+        )}
+
+        {cardFlipped && (
+          <View style={styles.card}>
+            <Text style={styles.cardText}>
+              {isImposter(players[currentRevealIndex].id)
+                ? "DAKHIL"
+                : secretWord}
+            </Text>
+
+            <Button
+              title="Confirm"
+              onPress={() => {
+                setCardFlipped(false);
+                setCurrentRevealIndex(i => i + 1);
+              }}
+            />
+          </View>
+        )}
+      </>
+    ) : (
+      <>
+        <Text style={styles.title}>All players ready</Text>
+        <Button
+          title="Start Discussion"
+          onPress={() => setScreen("discussion")}
+        />
+      </>
+    )}
+  </>
+)}
+
+
+
+
+    </View>
+  );
+}
+const COLORS = {
+  bg: "#0F1226",
+  card: "#1B1F3B",
+  primary: "#FF3D81",
+  secondary: "#4DD0E1",
+  text: "#FFFFFF",
+  muted: "#AAB0FF",
+  success: "#4CAF50",
+  danger: "#FF5252",
+};
+
+const SPACING = {
+  xs: 8,
+  sm: 12,
+  md: 16,
+  lg: 24,
+  xl: 32
+};
+
+const styles = StyleSheet.create({
+  /* ---------- LAYOUT ---------- */
+
+  container: {
+    flex: 1,
+    padding: SPACING.lg,
+    backgroundColor: COLORS.bg
+  },
+
+  bottomActions: {
+    marginTop: SPACING.lg,
+    paddingBottom: 48
+  },
+
+  /* ---------- TEXT ---------- */
+
+  title: {
+    fontSize: 34,
+    fontWeight: "900",
+    textAlign: "center",
+    marginBottom: SPACING.sm,
+    color: COLORS.primary,
+    letterSpacing: 1.2
+  },
+
+  homeTagline: {
+    textAlign: "center",
+    fontSize: 16,
+    color: COLORS.muted,
+    marginBottom: SPACING.xl,
+    letterSpacing: 0.6
+  },
+
+  subtitle: {
+    marginTop: SPACING.lg,
+    marginBottom: SPACING.sm,
+    fontSize: 20,
+    fontWeight: "800",
+    color: COLORS.secondary,
+    textAlign: "center"
+  },
+
+  info: {
+    fontSize: 17,
+    textAlign: "center",
+    color: COLORS.muted,
+    marginBottom: SPACING.lg,
+    lineHeight: 24
+  },
+
+  baseText: {
+    color: COLORS.text,
+    fontSize: 18,
+    fontWeight: "600"
+  },
+
+  hintText: {
+    textAlign: "center",
+    color: COLORS.muted,
+    marginBottom: SPACING.sm,
+    fontSize: 14
+  },
+
+  resultText: {
+    fontSize: 24,
+    textAlign: "center",
+    marginVertical: SPACING.xs,
+    fontWeight: "800",
+    color: COLORS.text
+  },
+
+  /* ---------- INPUT ---------- */
+
+  row: {
+    flexDirection: "row",
+    gap: SPACING.sm,
+    marginBottom: SPACING.md
+  },
+
+  input: {
+    flex: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    backgroundColor: COLORS.card,
+    color: COLORS.text,
+    fontSize: 18,
+    includeFontPadding: false,
+    textAlignVertical: "center"
+  },
+
+  /* ---------- PLAYER LIST ---------- */
+
+  addPlayerCard: {
+    backgroundColor: COLORS.card,
+    padding: SPACING.md,
+    borderRadius: 20,
+    marginBottom: SPACING.sm
+  },
+
+  playerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    backgroundColor: COLORS.card,
+    marginBottom: SPACING.sm
+  },
+
+  remove: {
+    color: COLORS.danger,
+    fontSize: 22,
+    fontWeight: "900"
+  },
+
+  /* ---------- REVEAL ---------- */
+
+  playerReveal: {
+    fontSize: 26,
+    fontWeight: "900",
+    textAlign: "center",
+    marginBottom: SPACING.md,
+    color: COLORS.text
+  },
+
+  card: {
+    height: 240,
+    borderRadius: 28,
+    backgroundColor: COLORS.card,
+    alignItems: "center",
+    justifyContent: "center",
+    marginVertical: SPACING.xl,
+    borderWidth: 3,
+    borderColor: COLORS.primary
+  },
+
+  cardText: {
+    fontSize: 36,
+    fontWeight: "900",
+    textAlign: "center",
+    color: COLORS.text,
+    letterSpacing: 1
+  },
+
+  /* ---------- VOTING ---------- */
+
+  voteOption: {
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+    borderRadius: 22,
+    marginVertical: SPACING.xs,
+    alignItems: "center",
+    backgroundColor: COLORS.card
+  },
+
+  voteText: {
+    fontSize: 24,
+    fontWeight: "900",
+    color: COLORS.text
+  },
+
+  voteSelected: {
+    backgroundColor: COLORS.primary,
+    transform: [{ scale: 1.04 }]
+  },
+
+  voteDisabled: {
+    opacity: 0.35
+  },
+
+  voteDisabledText: {
+    textDecorationLine: "line-through",
+    color: COLORS.muted
+  },
+
+  /* ---------- BUTTON ---------- */
+
+  primaryButton: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: 18,
+    borderRadius: 28,
+    alignItems: "center",
+    marginTop: SPACING.lg,
+    elevation: 8
+  },
+
+  primaryButtonText: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: "#000",
+    letterSpacing: 1.2,
+    textTransform: "uppercase"
+  },
+  /* ---------- BUTTON SYSTEM ---------- */
+
+buttonPrimary: {
+  backgroundColor: COLORS.primary,
+  paddingVertical: 18,
+  borderRadius: 28,
+  alignItems: "center",
+  justifyContent: "center",
+  marginVertical: 8,
+  elevation: 8
+},
+
+buttonPrimaryText: {
+  fontSize: 20,
+  fontWeight: "900",
+  color: "#000",
+  letterSpacing: 1.2,
+  textTransform: "uppercase"
+},
+
+buttonSecondary: {
+  backgroundColor: COLORS.card,
+  paddingVertical: 16,
+  borderRadius: 24,
+  alignItems: "center",
+  justifyContent: "center",
+  marginVertical: 6,
+  borderWidth: 2,
+  borderColor: COLORS.secondary
+},
+
+buttonSecondaryText: {
+  fontSize: 18,
+  fontWeight: "800",
+  color: COLORS.secondary,
+  letterSpacing: 0.8
+},
+
+buttonGhost: {
+  paddingVertical: 14,
+  alignItems: "center",
+  justifyContent: "center",
+  marginTop: 10
+},
+
+buttonGhostText: {
+  fontSize: 16,
+  fontWeight: "700",
+  color: COLORS.muted,
+  textDecorationLine: "underline"
+},
+
+buttonDanger: {
+  backgroundColor: COLORS.danger,
+  paddingVertical: 16,
+  borderRadius: 24,
+  alignItems: "center",
+  justifyContent: "center",
+  marginVertical: 8
+},
+
+buttonDangerText: {
+  fontSize: 18,
+  fontWeight: "900",
+  color: "#000",
+  letterSpacing: 1
+},
+
+buttonDisabled: {
+  opacity: 0.35
+}
+
+});
+
