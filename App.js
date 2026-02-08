@@ -1,18 +1,25 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Audio } from "expo-av";
 import React, { useState } from "react";
+import { Alert } from "react-native";
+
+
+
+
 import {
-    FlatList,
-    I18nManager,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  FlatList,
+  I18nManager,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from "react-native";
 
 
 /* ===================== CONSTANTS ===================== */
-const APP_VERSION = "0.9.0-beta";
+const APP_VERSION = "0.9.1-beta";
 const COLORS = {
   bg: "#0F1226",
   card: "#1B1F3B",
@@ -39,41 +46,34 @@ export default function App() {
 
   const [players, setPlayers] = useState([]);
   const [playerName, setPlayerName] = useState("");
+  const [soundOn, setSoundOn] = useState(true);
 
-  const [categories, setCategories] = useState({
+
+  const DEFAULT_CATEGORIES = {
     food: {
-      label: {
-        en: "Food",
-        ar: "طعام"
-      },
+      label: { en: "Food", ar: "طعام" },
       words: {
         en: ["pizza", "burger", "apple", "rice"],
         ar: ["بيتزا", "برغر", "تفاح", "أرز"]
       }
     },
-  
     animals: {
-      label: {
-        en: "Animals",
-        ar: "حيوانات"
-      },
+      label: { en: "Animals", ar: "حيوانات" },
       words: {
         en: ["cat", "dog", "lion", "cow"],
         ar: ["قط", "كلب", "أسد", "بقرة"]
       }
     },
-  
     clothes: {
-      label: {
-        en: "Clothes",
-        ar: "ملابس"
-      },
+      label: { en: "Clothes", ar: "ملابس" },
       words: {
         en: ["shirt", "pants", "skirt", "jacket"],
         ar: ["قميص", "بنطال", "تنورة", "سترة"]
       }
     }
-  });
+  };
+  const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
+
   
 
   const [selectedCategory, setSelectedCategory] = useState(null);
@@ -95,6 +95,7 @@ export default function App() {
   const [currentImposterGuessIndex, setCurrentImposterGuessIndex] = useState(0);
   const [imposterWon, setImposterWon] = useState(false);
   const [language, setLanguage] = useState("en");
+
 
   const isArabic = language === "ar";
   const TEXT = {
@@ -180,6 +181,88 @@ export default function App() {
     }
   };
 
+
+  const sounds = {
+    click: require("./sounds/click.mp3"),
+    flip: require("./sounds/flip.mp3"),
+    next: require("./sounds/next.mp3"),
+    start: require("./sounds/start.mp3"),
+    win: require("./sounds/win.mp3")
+  };
+  
+  async function playSound(type) {
+    if (!soundOn) return;
+    try {
+      const { sound } = await Audio.Sound.createAsync(sounds[type]);
+      await sound.setVolumeAsync(0.6);
+      await sound.playAsync();
+    } catch (e) {
+      // silent fail
+    }
+  }
+  
+  
+
+  async function deleteCustomCategory(key) {
+    // 1. Remove from state
+    setCategories(prev => {
+      const updated = { ...prev };
+      delete updated[key];
+      return updated;
+    });
+  
+    // 2. Remove from AsyncStorage
+    const saved = await AsyncStorage.getItem("CUSTOM_CATEGORIES");
+    if (!saved) return;
+  
+    const parsed = JSON.parse(saved);
+    delete parsed[key];
+  
+    await AsyncStorage.setItem(
+      "CUSTOM_CATEGORIES",
+      JSON.stringify(parsed)
+    );
+  }
+  function confirmDeleteCategory(key) {
+    Alert.alert(
+      "Delete Category",
+      "This category will be permanently deleted.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => deleteCustomCategory(key)
+        }
+      ]
+    );
+  }
+  
+  function BackButton({ to }) {
+    return (
+      <TouchableOpacity
+        onPress={() => setScreen(to)}
+        style={{ marginBottom: 10 }}
+      >
+        <Text style={{ color: COLORS.muted, fontSize: 16 }}>
+          ← {t("back")}
+        </Text>
+      </TouchableOpacity>
+    );
+  }
+  React.useEffect(() => {
+    (async () => {
+      const saved = await AsyncStorage.getItem("CUSTOM_CATEGORIES");
+      if (saved) {
+        setCategories(prev => ({
+          ...DEFAULT_CATEGORIES,
+          ...JSON.parse(saved)
+        }));
+      }
+    })();
+  }, []);
+  
+  
   function switchLanguage(lang) {
     setLanguage(lang);
   
@@ -220,25 +303,45 @@ export default function App() {
     setScreen("imposterConfig");
   }
   
-  function addCustomCategory() {
-    const words = customWordsText.split(",").map(w => w.trim()).filter(Boolean);
+  async function addCustomCategory() {
+    const words = customWordsText
+      .split(",")
+      .map(w => w.trim())
+      .filter(Boolean);
+  
     if (!customCategoryName || words.length < 3) return;
-    setCategories(prev => ({
-        ...prev,
-        [customCategoryName]: {
-          label: {
-            en: customCategoryName,
-            ar: customCategoryName
-          },
-          words: {
-            [language]: words
-          }
+  
+    const newCategory = {
+      [customCategoryName]: {
+        label: {
+          en: customCategoryName,
+          ar: customCategoryName
+        },
+        words: {
+          en: words,
+          ar: words
         }
-      }));
-          chooseCategory(customCategoryName, words);
+      }
+    };
+  
+    const saved = await AsyncStorage.getItem("CUSTOM_CATEGORIES");
+    const parsed = saved ? JSON.parse(saved) : {};
+  
+    const updatedCustom = { ...parsed, ...newCategory };
+  
+    await AsyncStorage.setItem(
+      "CUSTOM_CATEGORIES",
+      JSON.stringify(updatedCustom)
+    );
+  
+    setCategories(prev => ({ ...prev, ...newCategory }));
+  
+    chooseCategory(customCategoryName, words);
     setCustomCategoryName("");
     setCustomWordsText("");
   }
+  
+  
 
   function selectImposters() {
     const shuffled = [...players].sort(() => Math.random() - 0.5);
@@ -247,7 +350,13 @@ export default function App() {
     setCardFlipped(false);
     setScreen("reveal");
   }
-
+  React.useEffect(() => {
+    Audio.setAudioModeAsync({
+      playsInSilentModeIOS: true,
+      shouldDuckAndroid: true
+    });
+  }, []);
+  
   function toggleVote(id) {
     setSelectedVotes(v =>
       v.includes(id)
@@ -284,23 +393,65 @@ export default function App() {
     <View style={styles.container}>
 
 {/* ===================== HOME ===================== */}
-{screen === "home" && (
+{screen === "home" && ( 
   <View style={{ flex: 1, justifyContent: "center" }}>
-    <View style={{ flexDirection: "row", justifyContent: "center", marginBottom: 20 }}>
-  <TouchableOpacity
-    style={styles.buttonSecondary}
-    onPress={() => switchLanguage("en")}
-  >
-    <Text style={styles.buttonSecondaryText}>EN</Text>
-  </TouchableOpacity>
+<View style={styles.homeTopBar}>
+  {/* Language toggle */}
+  <View style={styles.langToggle}>
+    <TouchableOpacity
+      style={[
+        styles.langButton,
+        language === "en" && styles.langActive
+      ]}
+      onPress={() => {
+        playSound("click");
+        switchLanguage("en");
+      }}
+    >
+      <Text style={styles.langText}>EN</Text>
+    </TouchableOpacity>
 
-  <TouchableOpacity
-    style={[styles.buttonSecondary, { marginLeft: 10 }]}
-    onPress={() => switchLanguage("ar")}
-  >
-    <Text style={styles.buttonSecondaryText}>AR</Text>
+    <TouchableOpacity
+      style={[
+        styles.langButton,
+        language === "ar" && styles.langActive
+      ]}
+      onPress={() => {
+        playSound("click");
+        switchLanguage("ar");
+      }}
+    >
+      <Text style={styles.langText}>AR</Text>
+    </TouchableOpacity>
+
+    <TouchableOpacity
+  style={[
+    styles.langButton,
+    soundOn && styles.langActive
+  ]}
+  onPress={() => {
+    playSound("click");   // play first
+    setSoundOn(s => !s); // then toggle
+  }}
+>
+  <Text style={styles.langText}>
+    {soundOn ? "🔊" : "🔇"}
+  </Text>
+</TouchableOpacity>
+
+
+
+  </View>
+
+  {/* About */}
+  <TouchableOpacity onPress={() => {
+  playSound("click");
+  setScreen("about");
+}}>
+    <Text style={styles.aboutMini}>ℹ︎</Text>
   </TouchableOpacity>
 </View>
+
 
 <Text style={styles.title}>{t("title")}</Text>
 <Text style={styles.homeTagline}>
@@ -309,14 +460,17 @@ export default function App() {
 
     <TouchableOpacity
       style={styles.buttonPrimary}
-      onPress={() => setScreen("setup")}
+      onPress={() => {
+        playSound("start");
+        setScreen("setup");
+      }}
     >
 <Text style={styles.buttonPrimaryText}>
   {t("startGame")}
 </Text>
     </TouchableOpacity>
     <Text style={{ color: "#888", fontSize: 12, textAlign: "center" ,marginTop:60}}>
-  DAKHIL v0.9.0 (Beta)
+  DAKHIL v0.9.1 (Beta)
 </Text>
 
   </View>
@@ -325,6 +479,7 @@ export default function App() {
 {/* ===================== SETUP ===================== */}
 {screen === "setup" && (
   <>
+      <BackButton to="home" />
     <Text style={styles.title}>{t("addPlayers")}</Text>
 
     <View style={styles.addPlayerCard}>
@@ -360,14 +515,20 @@ export default function App() {
         players.length < 3 && styles.buttonDisabled
       ]}
       disabled={players.length < 3}
-      onPress={() => setScreen("category")}
+      onPress={() => {
+        playSound("click");
+        setScreen("category");
+      }}
     >
       <Text style={styles.buttonPrimaryText}>{t("continue")}</Text>
     </TouchableOpacity>
 
     <TouchableOpacity
       style={styles.buttonGhost}
-      onPress={() => setScreen("home")}
+      onPress={() => {
+        playSound("click");
+        setScreen("category");
+      }}
     >
       <Text style={styles.buttonGhostText}>{t("back")}</Text>
     </TouchableOpacity>
@@ -377,24 +538,47 @@ export default function App() {
 {/* ===================== CATEGORY ===================== */}
 {screen === "category" && (
   <ScrollView>
+        <BackButton to="setup" />
     <Text style={styles.title}>{t("chooseCategory")}</Text>
+    {Object.entries(categories).map(([key, cat]) => {
+  const isCustom = !DEFAULT_CATEGORIES[key];
 
-    {Object.entries(categories).map(([key, cat]) => (
-        <TouchableOpacity
-        key={key}
+  return (
+    <View key={key} style={{ marginBottom: 10 }}>
+      {/* Category button */}
+      <TouchableOpacity
         style={styles.buttonSecondary}
         onPress={() =>
-            chooseCategory(
-            key,
-            cat.words[language]   // 👈 language-specific words
-            )
+          chooseCategory(key, cat.words[language])
         }
-        >
+      >
         <Text style={styles.buttonSecondaryText}>
-            {cat.label[language]}
+          {cat.label[language]}
         </Text>
+      </TouchableOpacity>
+
+      {/* DELETE BUTTON (custom categories only) */}
+      {isCustom && (
+        <TouchableOpacity
+          onPress={() => confirmDeleteCategory(key)}
+        >
+          <Text
+            style={{
+              color: COLORS.danger,
+              textAlign: "center",
+              marginTop: 4
+            }}
+          >
+            Delete
+          </Text>
         </TouchableOpacity>
-    ))}
+      )}
+    </View>
+  );
+})}
+
+
+
 
 
     <Text style={styles.subtitle}>{t("customCategory")}</Text>
@@ -424,7 +608,10 @@ export default function App() {
 
     <TouchableOpacity
       style={styles.buttonGhost}
-      onPress={() => setScreen("setup")}
+      onPress={() => {
+        playSound("click");
+        setScreen("setup");
+      }}
     >
       <Text style={styles.buttonGhostText}>{t("back")}</Text>
     </TouchableOpacity>
@@ -434,6 +621,7 @@ export default function App() {
 {/* ===================== IMPOSTER CONFIG ===================== */}
 {screen === "imposterConfig" && (
   <>
+      <BackButton to="category" />
     <Text style={styles.title}>{t("imposters")}</Text>
 
     <TouchableOpacity
@@ -472,7 +660,11 @@ export default function App() {
 
         <TouchableOpacity
           style={styles.card}
-          onPress={() => setCardFlipped(!cardFlipped)}
+          onPress={() => {
+            playSound("flip");
+            setCardFlipped(!cardFlipped);
+          }}
+          
         >
           <Text style={styles.cardText}>
             {cardFlipped
@@ -498,7 +690,10 @@ export default function App() {
     ) : (
       <TouchableOpacity
         style={styles.buttonPrimary}
-        onPress={() => setScreen("discussion")}
+        onPress={() => {
+          playSound("click");
+          setScreen("discussion");
+        }}
       >
         <Text style={styles.buttonPrimaryText}>{t("StartDiscussion")}</Text>
       </TouchableOpacity>
@@ -509,6 +704,7 @@ export default function App() {
 {/* ===================== DISCUSSION ===================== */}
 {screen === "discussion" && (
   <>
+  <BackButton to="reveal" />
     <Text style={styles.title}>{t("discussion")}</Text>
         <Text style={styles.info}>
         {t("discussionInfo")}
@@ -522,7 +718,9 @@ export default function App() {
         setCurrentVoterIndex(0);
         setSelectedVotes([]);
         setScreen("voting");
+        playSound("click");
       }}
+      
     >
       <Text style={styles.buttonPrimaryText}>{t("StartVoting")}</Text>
     </TouchableOpacity>
@@ -531,24 +729,30 @@ export default function App() {
 
 {/* ===================== VOTING ===================== */}
 {screen === "voting" && (
-  <>
+  <View style={{ flex: 1 }}>
+        <BackButton to="discussion" />
     <Text style={styles.title}>
-    {t("PassPhone2")}  {players[currentVoterIndex].name}
+      {t("PassPhone2")} {players[currentVoterIndex].name}
     </Text>
 
-    {players.map(p => (
-      <TouchableOpacity
-        key={p.id}
-        disabled={p.id === players[currentVoterIndex].id}
-        onPress={() => toggleVote(p.id)}
-        style={[
-          styles.voteOption,
-          selectedVotes.includes(p.id) && styles.voteSelected
-        ]}
-      >
-        <Text style={styles.voteText}>{p.name}</Text>
-      </TouchableOpacity>
-    ))}
+    <ScrollView
+      style={{ flex: 1 }}
+      contentContainerStyle={{ paddingBottom: 120 }}
+    >
+      {players.map(p => (
+        <TouchableOpacity
+          key={p.id}
+          disabled={p.id === players[currentVoterIndex].id}
+          onPress={() => toggleVote(p.id)}
+          style={[
+            styles.voteOption,
+            selectedVotes.includes(p.id) && styles.voteSelected
+          ]}
+        >
+          <Text style={styles.voteText}>{p.name}</Text>
+        </TouchableOpacity>
+      ))}
+    </ScrollView>
 
     <TouchableOpacity
       style={[
@@ -556,16 +760,24 @@ export default function App() {
         selectedVotes.length !== impostersCount && styles.buttonDisabled
       ]}
       disabled={selectedVotes.length !== impostersCount}
-      onPress={confirmVote}
+      onPress={() => {
+        playSound("click");
+        confirmVote();
+      }}
+      
     >
-      <Text style={styles.buttonPrimaryText}>{t("confirmVote")}</Text>
+      <Text style={styles.buttonPrimaryText}>
+        {t("confirmVote")}
+      </Text>
     </TouchableOpacity>
-  </>
+  </View>
 )}
+
 
 {/* ===================== RESULTS ===================== */}
 {screen === "voteResults" && (
   <>
+  <BackButton to="voting" />
     <Text style={styles.title}>{t("results")}</Text>
     {getTopVoted().map((v, i) => (
       <Text key={i} style={styles.resultText}>
@@ -577,7 +789,9 @@ export default function App() {
 
     <TouchableOpacity
       style={styles.buttonPrimary}
-      onPress={() => setScreen("revealImposters")}
+      onPress={() =>{
+         setScreen("revealImposters");
+         playSound("click");}}
     >
     <Text style={styles.buttonPrimaryText}>{t("revealImposter")}</Text>
     </TouchableOpacity>
@@ -587,6 +801,7 @@ export default function App() {
 {/* ===================== Imposter reveal ===================== */}
 {screen === "revealImposters" && (
   <>
+  <BackButton to="voteResults" />
     <Text style={styles.title}>{t("imposters")}</Text>
 
     {imposterIds.map(id => {
@@ -599,6 +814,7 @@ export default function App() {
         setCurrentImposterGuessIndex(0);
         setImposterWon(false);
         setScreen("imposterGuess");
+        playSound("click");
       }}
     >
       <Text style={styles.buttonPrimaryText}>{t("chooseWord")}</Text>
@@ -609,6 +825,7 @@ export default function App() {
 )}
 {screen === "imposterGuess" && (
   <View style={{ flex: 1 }}>
+    <BackButton to="revealImposters" />
     <Text style={styles.title}>
       {t("imposterGuess")}
     </Text>
@@ -642,6 +859,7 @@ export default function App() {
             ) {
               setCurrentImposterGuessIndex(i => i + 1);
             } else {
+              playSound("win");
               setScreen("finalResult");
             }
           }}
@@ -691,6 +909,7 @@ export default function App() {
           setCurrentVoterIndex(0);
           setImposterIds([]);
           setCurrentRevealIndex(0);
+          playSound("click");
           setCardFlipped(false);
           setCurrentImposterGuessIndex(0);
           setImposterWon(false);
@@ -726,6 +945,44 @@ export default function App() {
       </TouchableOpacity>
     </>
   )}
+  {screen === "about" && (
+  <>
+    <BackButton to="home" />
+    <Text style={styles.title}>About</Text>
+
+    <Text style={styles.info}>
+      DAKHIL v{APP_VERSION}
+    </Text>
+    <TouchableOpacity>
+      <Text style={styles.info}>
+
+دخيل هي لعبة جماعية تعتمد على الملاحظة، النقاش، والخداع.
+
+جميع اللاعبين يحصلون على نفس الكلمة السرية — باستثناء الدخلاء.
+من خلال طرح الأسئلة والإجابات الذكية، على اللاعبين اكتشاف من لا يعرف الكلمة… قبل فوات الأوان.
+
+اللعبة مثالية للأصدقاء والعائلة والجلسات الجماعية، وتشجع على التواصل، التفكير، والضحك.
+
+كلمة واحدة.
+كاذب واحد.
+من هو الدخيل؟
+      </Text>
+    </TouchableOpacity>
+
+    <TouchableOpacity>
+      <Text style={styles.resultText}>
+        GitHub: https://github.com/git-sal0/dakhil-game
+      </Text>
+    </TouchableOpacity>
+
+    <TouchableOpacity>
+      <Text style={styles.resultText}>
+        dev: Salma.E.M
+      </Text>
+    </TouchableOpacity>
+  </>
+)}
+
 
     </View>
   );
@@ -899,5 +1156,40 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.35
+  },
+  homeTopBar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: SPACING.lg
+  },
+  
+  langToggle: {
+    flexDirection: "row",
+    backgroundColor: COLORS.card,
+    borderRadius: 20,
+    padding: 4
+  },
+  
+  langButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16
+  },
+  
+  langActive: {
+    backgroundColor: COLORS.primary
+  },
+  
+  langText: {
+    fontWeight: "900",
+    color: COLORS.text
+  },
+  
+  aboutMini: {
+    fontSize: 22,
+    color: COLORS.muted,
+    padding: 6
   }
+  
 });
